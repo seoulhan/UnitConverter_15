@@ -1,0 +1,258 @@
+################################################################################
+project:
+  name: UnitConverter
+  language: C++
+  standard: C++17
+  domain: length_unit_conversion
+  base_unit: meter
+  default_units:
+    - meter
+    - feet
+    - yard
+  conversion_policy: all_units_via_meter_equivalent
+  display_rounding: one_decimal_boundary_only
+
+################################################################################
+code_style:
+  formatter: clang-format
+  formatter_config: .clang-format
+  naming:
+    types_classes: PascalCase
+    functions_methods: camelCase
+    variables: camelCase
+    constants: kPascalCase or constexpr inline
+    namespaces: lower_snake
+    test_cases: Snake_Case_with_layer_prefix
+    files: lower_snake_case
+  header_source:
+    principle: declaration_in_hpp_definition_in_cpp
+    headers: include guards or #pragma once
+    headers_contain: declarations templates inline_only_when_required
+    sources_contain: non_inline definitions
+    include_order:
+      - corresponding_header
+      - project_headers
+      - third_party
+      - standard_library
+  other:
+    - prefer const and constexpr over macros
+    - use std::optional or Result type for domain failures not exceptions for flow
+    - no using namespace std in headers
+
+################################################################################
+architecture:
+  layers:
+    boundary:
+      definition: >
+        CLI/stdin·stdout·stderr, argument parsing, input validation syntax,
+        output serialization (table, CSV, JSON), human and machine error messages.
+      owns: I/O contracts, exit codes, display rounding
+      must_not: conversion formulas, unit ratio storage logic
+    control:
+      definition: >
+        Use-case orchestration: ConvertUseCase, RegisterUseCase, LoadConfigUseCase.
+        Maps Boundary DTOs to Entity calls and aggregates results.
+      owns: transaction flow, DomainError to Boundary error mapping table
+      must_not: std::cout for domain output, raw conversion math duplicated
+    entity:
+      definition: >
+        Domain model: UnitId, PositiveLength, ConversionFactor, UnitRegistry,
+        ConversionService. Pure business rules and invariants.
+      owns: D-INV-1 through D-INV-6, meter-based conversion graph
+      must_not: file I/O, JSON parsing, CLI formatting
+    data:
+      definition: >
+        IUnitRatioSource, JSON snapshot load/save. Supplies initial registry data.
+      owns: external config schema version 1
+      must_not: conversion execution, CLI parsing
+  dependency_direction:
+    allowed:
+      - boundary -> control
+      - control -> entity
+      - control -> data
+      - data -> entity types for snapshot mapping only via factory at control
+    forbidden:
+      - entity -> boundary
+      - entity -> data
+      - entity -> control
+      - data -> boundary
+      - boundary -> entity direct skip control except in tests via facade
+  principles:
+    - OCP for new units and output formats via registration not if-else growth
+    - SRP one reason to change per class/file role
+    - source unit excluded from convert-all output (D-UC01-excludes-source)
+
+################################################################################
+tdd_rules:
+  red_phase:
+    description: >
+      Catch2 테스트를 먼저 추가하고, Domain(Entity) → Data → Boundary → Integration
+      순으로 실패(RED)를 확인한 뒤 최소 구현으로 넘어간다.
+    rules:
+      - "새 동작·버그 수정 시 테스트 케이스 제목(또는 TEST_CASE 이름)을 먼저 확정한다."
+      - "Domain 불변식(D-INV-1~6)마다 최소 1개 실패 테스트를 둔다."
+      - "Boundary 계약(입력 unit:value, stderr 패턴, exit code)은 Domain Mock으로 RED를 만든다."
+      - "비율 golden 값은 단일 출처(2.5 m → feet = 2.5 * 3.28084, ε = 1e-9)만 사용한다."
+      - "표시 반올림(1자리) 테스트는 Boundary에만 둔다; Domain golden은 full precision이다."
+      - "RED 단계에서 테스트 실행 결과는 반드시 실패해야 한다(스킵·빈 ASSERT 금지)."
+      - "통합(E2E) 테스트는 Domain P0 green 이후에 RED를 추가한다."
+    must_not:
+      - "테스트를 통과시키기 위한 프로덕션 구현을 RED 전에 작성하지 않는다."
+      - "테스트 없이 if-else·하드코딩 비율·printf 포맷을 먼저 추가하지 않는다."
+      - "RED를 우회하는 @skip, DISABLED_, 빈 TEST_CASE, 항상 true ASSERT를 쓰지 않는다."
+      - "README 예시(8.2, 2.7)를 Domain epsilon 테스트에 직접 쓰지 않는다(표시는 Boundary)."
+      - "여러 레이어를 한 번에 구현한 뒤 테스트를 나중에 붙이지 않는다."
+
+  green_phase:
+    description: >
+      현재 RED 테스트만 green이 되도록 최소 코드를 작성한다.
+      범위 밖 리팩터·기능 확장은 하지 않는다.
+    rules:
+      - "한 번에 1개 TEST_CASE(또는 한 invariant 그룹)만 green으로 만든다."
+      - "Domain 구현 시 meter 기준 환산 v_B = (v_A * k_A) / k_B만 사용한다."
+      - "실패 시 DomainError → Boundary exit code·stderr 문구 매핑 테이블을 한 곳에서 적용한다."
+      - "green 확인은 Catch2 실행으로만 한다(수동 stdout 눈검산은 보조)."
+      - "convert 결과에서 source 단위는 목록·출력에서 제외한다(D-UC01-excludes-source)."
+      - "동적 등록은 with_unit 등 불변 Registry 반환으로 구현한다."
+      - "green 후 해당 테스트는 CI/로컬 회귀 세트에 포함한다."
+    must_not:
+      - "통과에 필요 없는 단위·포맷·Data 기능을 선제 구현하지 않는다."
+      - "테스트를 삭제·완화·ε 확대로 통과시키지 않는다."
+      - "main/CLI에 변환 로직을 직접 넣지 않는다(Boundary → Control → Domain)."
+      - "golden·에러 문구를 테스트 없이 변경하지 않는다."
+      - "한 PR에서 RED+green+대규모 refactor를 동시에 하지 않는다."
+
+  refactor_phase:
+    description: >
+      전체 관련 테스트가 green인 상태에서만 구조를 개선한다.
+      관측 가능한 동작(수치, exit code, 출력 스키마)은 변하지 않아야 한다.
+    rules:
+      - "refactor 전후 Catch2 전체(해당 모듈) green을 유지한다."
+      - "if-else 단위 분기를 Registry·ConversionService·Formatter로 분리할 때 SRP/OCP를 적용한다."
+      - "Boundary ↔ Domain ↔ Data 의존 방향(Entity가 Data/Boundary를 참조하지 않음)을 지킨다."
+      - "중복 제거 후에도 Traceability(Concept→Test ID)가 깨지지 않게 테스트 이름을 유지한다."
+      - "표시 반올림·CSV/JSON 직렬화는 Boundary에만 남긴다."
+      - "리팩터 단위는 한 책임(Parser, Formatter, UnitRegistry 등)씩 작게 한다."
+    must_not:
+      - "테스트 green 없이 '정리' 명목으로 파일·인터페이스를 대량 이동하지 않는다."
+      - "refactor 중 공개 API·에러 패턴·JSON/CSV 스키마를 바꾸지 않는다(변경 시 테스트 먼저 RED)."
+      - "동작 변경을 refactor에 숨기지 않는다(동작 변경은 RED→green 사이클)."
+      - "테스트 커버리지 목표(Domain ≥95% line)를 미달한 채 구조만 확장하지 않는다."
+      - "AI 생성 코드를 테스트 실행 없이 병합하지 않는다."
+
+################################################################################
+testing:
+  framework: Catch2
+  framework_fixed: true
+  pattern: AAA
+  aaa:
+    arrange: build registry, input strings, mocks, temp config files
+    act: single call to function under test or one CLI invocation
+    assert: REQUIRE for fatal EXPECT for multiple checks same case
+  fixtures:
+    default_registry: shared meter feet yard registry per test file
+    temp_config_dir: unique subdir per TEST_CASE for JSON load tests
+    boundary_mock: IConversionFacade stub for parser formatter tests
+    no_network: no external IO except explicit temp files
+    teardown: remove temp dirs in test destructors or Catch2 generators
+  naming:
+    domain_prefix: Domain_
+    boundary_prefix: Boundary_
+    data_prefix: Data_
+    integration_prefix: IT_
+  coverage_targets:
+    entity_line: 95
+    entity_branch: 90
+    control_line: 90
+    boundary_line: 85
+    data_line: 90
+  regression_minimum:
+    - Domain P0 convert and length validation
+    - IT-OK-01 meter colon 2p5 table
+    - IT-FAIL-01 negative value
+    - IT-FAIL-02 invalid format
+    - IT-FAIL-03 unknown unit
+
+################################################################################
+forbidden:
+  - pattern: "std::cout / std::cerr for debug tracing in entity/ or control/"
+    reason: pollutes I/O contract and breaks test determinism
+    alternative: Catch2 CAPTURE variables or boundary-only stderr per error schema
+  - pattern: "literal 3.28084 1.09361 0.3048 in conversion logic outside named constants or config"
+    reason: magic numbers diverge from Data schema and README golden drift
+    alternative: constexpr kMetersPerFoot in entity config loader or JSON units map
+  - pattern: "catch (...) { } or catch (...) without rethrow in domain paths"
+    reason: swallows DomainError and hides invalid input failures
+    alternative: Result or std::optional return DomainError enum explicit mapping at control
+  - pattern: "non-template function bodies in .hpp except trivial accessors"
+    reason: ODR violations slow builds hide layer boundaries
+    alternative: declare in include implement in .cpp one class per pair
+  - pattern: "global mutable registry g_registry or static UnitRegistry modified by tests production"
+    reason: order-dependent tests hidden coupling cross TEST_CASE
+    alternative: inject UnitRegistry by constructor parameter factory per use case
+  - pattern: "if (unit == \"feet\") chains in main or growing unit strings in entity"
+    reason: violates OCP new unit requires editing core
+    alternative: UnitRegistry map register unit Command
+  - pattern: "conversion math or ratio load inside CliParser or JsonFormatter"
+    reason: layer violation untestable domain in boundary
+    alternative: control ConvertUseCase calls ConversionService only
+  - pattern: "#include <iostream> in entity/*.hpp"
+    reason: entity must stay pure of I/O
+    alternative: keep iostream only in boundary/cli sources
+
+################################################################################
+file_structure:
+  tree: |
+    project_root/
+    ├── .cursorrules
+    ├── .clang-format
+    ├── CMakeLists.txt          # or Makefile: builds app + Catch2 tests
+    ├── config/
+    │   └── units.json          # Data: initial meters_per_unit snapshot
+    ├── boundary/
+    │   ├── cli_main.cpp        # entry: parse argv delegate to control
+    │   ├── cli_parser.hpp/cpp
+    │   ├── output_formatter.hpp/cpp  # table csv json
+    │   └── error_mapper.hpp/cpp      # DomainError -> exit stderr
+    ├── control/
+    │   ├── convert_use_case.hpp/cpp
+    │   └── register_use_case.hpp/cpp
+    ├── entity/
+    │   ├── unit_id.hpp/cpp
+    │   ├── unit_registry.hpp/cpp
+    │   ├── conversion_service.hpp/cpp
+    │   └── domain_error.hpp
+    ├── data/
+    │   ├── i_unit_ratio_source.hpp
+    │   └── json_unit_ratio_source.hpp/cpp
+    └── tests/
+        ├── domain/
+        ├── boundary/
+        ├── data/
+        └── integration/
+  rules:
+    - one primary class role per hpp/cpp pair unless header-only small type
+    - tests mirror layer folders never place Catch2 inside entity production tree
+    - legacy UnitConverter.cpp migrate to boundary/cli_main.cpp then delete monolith
+
+################################################################################
+ai_behavior:
+  default_workflow:
+    - read architecture dependency_direction before any edit
+    - add or update Catch2 test first when behavior changes (tdd_rules red_phase)
+    - implement minimum green in correct layer only
+    - run Catch2 before claiming done
+    - refactor only when user asks or tdd_rules refactor_phase and all targeted tests green
+  must:
+    - respect boundary control entity data layer boundaries
+    - use Catch2 not other test frameworks
+    - preserve error message patterns and exit codes when touching boundary
+    - cite invariant ID when adding test (e.g. D-INV-4 D-UC01)
+  must_not:
+    - skip tests and deliver full feature in one shot
+    - put conversion formulas in main cli_parser or formatter
+    - weaken assertions or delete failing tests to pass
+    - refactor file tree or public API while tests failing
+    - add third party except Catch2 and standard library without user request
+    - merge generated code without stating test run result
+  on_layer_violation_detected: stop propose move to correct layer with test
