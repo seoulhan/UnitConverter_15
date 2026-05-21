@@ -1,52 +1,37 @@
 #include <iostream>
-#include <sstream>
 #include <string>
+
+#include "boundary/cli_parser.hpp"
+#include "boundary/output_formatter.hpp"
+#include "boundary/unit_validator.hpp"
+#include "control/config_loader.hpp"
+#include "control/convert_use_case.hpp"
+#include "data/json_unit_ratio_source.hpp"
+#include "entity/conversion_service.hpp"
 
 int main() {
     std::cout << "Insert value for converting (ex: meter:2.5): ";
 
     std::string input;
-    std::getline(std::cin, input);
-
-    std::string unit;
-    double value = 0.0;
-
-    std::size_t pos = input.find(':');
-    if (pos == std::string::npos) {
-        std::cerr << "Invalid format. Use unit:value (ex: meter:2.5)" << std::endl;
+    if (!std::getline(std::cin, input)) {
         return 1;
     }
-
-    unit = input.substr(0, pos);
-    std::string valueStr = input.substr(pos + 1);
 
     try {
-        value = std::stod(valueStr);
-    } catch (...) {
-        std::cerr << "Invalid number: " << valueStr << std::endl;
+        const data::JsonUnitRatioSource source;
+        const entity::UnitRegistry registry =
+            control::loadConfigOrDefault("config/units.json", source);
+        const boundary::ParsedInput parsed = boundary::parseConvertInput(input);
+        boundary::ensureKnownUnit(registry, parsed.unitId);
+        const entity::ConversionService service{registry};
+        const control::ConvertUseCase useCase{service};
+        const auto rows = useCase.execute(parsed.unitId, parsed.value);
+        for (const auto& line : boundary::formatTable(parsed.unitId, parsed.value, rows)) {
+            std::cout << line << '\n';
+        }
+        return 0;
+    } catch (const std::invalid_argument& ex) {
+        std::cerr << ex.what() << '\n';
         return 1;
     }
-
-    double meterValue = 0.0;
-
-    if (unit == "meter") {
-        meterValue = value;
-    } else if (unit == "feet") {
-        meterValue = value / 3.28084;
-    } else if (unit == "yard") {
-        meterValue = value / 1.09361;
-    } else {
-        std::cerr << "Unknown unit: " << unit << std::endl;
-        return 1;
-    }
-
-    double inMeters = meterValue;
-    double inFeet = meterValue * 3.28084;
-    double inYards = meterValue * 1.09361;
-
-    std::cout << value << " " << unit << " = " << inMeters << " meter" << std::endl;
-    std::cout << value << " " << unit << " = " << inFeet << " feet" << std::endl;
-    std::cout << value << " " << unit << " = " << inYards << " yard" << std::endl;
-
-    return 0;
 }
