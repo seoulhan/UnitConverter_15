@@ -9,3 +9,8 @@ using entity::convert;
 TEST_CASE("TC-B-01 convert meter to feet", "[domain][TC-B-01]") {
     REQUIRE(convert("meter", 2.5, "feet") == Catch::Approx(8.20210).epsilon(1e-5));
 }
+
+// TC-B-02 | D-INV-1: 1 meter = 1.09361 yard, ε 1e-5
+TEST_CASE("TC-B-02 convert meter to yard", "[domain][TC-B-02]") {
+    REQUIRE(convert("meter", 1.0, "yard") == Catch::Approx(1.09361).epsilon(1e-5));
+}
