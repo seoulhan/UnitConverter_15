@@ -1,71 +1,359 @@
+# UnitConverter
 
-## Unit Converter (C++)
+**한 줄 설명:** meter 허브 기반 길이 단위를 변환하는 CLI와 Catch2 계약 테스트를 통해, C++ 학습자가 **OCP/SRP·BCE 레이어·TDD**를 증명 가능한 형태로 익히도록 돕는다.
+
 ![unit-converter](./unit-converter.jpg)
-### Overview
-- 사용자가 입력한 길이(`단위:값`)를 기반으로, 해당 값을 다른 모든 단위로 변환해 출력하는 프로그램.
-- 새로운 단위를 추가할 때 기존 코드의 변경이 최소화되도록 설계한다.
-- 각 단위 변환 로직은 테스트 코드로 검증한다.
 
-### 빌드 및 실행
+---
+
+## 목차
+
+- [개요 (Overview)](#개요-overview)
+- [빠른 시작 (Quick Start)](#빠른-시작-quick-start)
+- [지원 단위 및 비율](#지원-단위-및-비율)
+- [입력 형식 계약](#입력-형식-계약)
+- [아키텍처](#아키텍처)
+- [테스트 실행](#테스트-실행)
+- [설정 파일 (JSON/YAML)](#설정-파일-jsonyaml)
+- [출력 포맷](#출력-포맷)
+- [기여 가이드 (Contributing)](#기여-가이드-contributing)
+- [라이선스](#라이선스)
+
+---
+
+## 개요 (Overview)
+
+### 이 프로젝트가 해결하는 문제
+
+- 단일 파일에 `if-else`와 변환 비율이 섞이면, 단위·출력 포맷이 늘 때마다 **핵심 로직을 반복 수정**해야 한다.
+- 입출력 형식, 오류 문구, exit code, 표시용 반올림이 코드에만 있으면 **합의·회귀 검증**이 불다.
+- “돌아가는 계산기”와 “**계약·테스트·레이어로 보호되는 시스템**” 사이의 격차를 학습용 저장소에서 메운다.
+
+### 주요 학습 목표
+
+| 목표 | 내용 |
+|------|------|
+| **OCP** | 새 단위·포맷은 **등록/추가**로 확장; `if (unit == …)` 체인 최소화 |
+| **SRP** | 파싱·환산·직렬화·설정 로드를 **Boundary / Control / Entity / Data**로 분리 |
+| **BCE** | Dual-Track TDD: Domain RED → Data → Boundary → Integration |
+| **TDD** | Catch2로 ε golden, stderr 패턴, exit code, 출력 줄 형식을 **먼저 고정** |
+
+### PRD와의 연결
+
+본 README는 **Phase 5 PRD**의 사용자 대면 요약이다. 입출력·에러·비율의 계약은 PRD §3·§5·§6 및 Gherkin Background와 동기화한다.
+
+→ [docs/PRD.md](docs/PRD.md) · [docs/TODO.md](docs/TODO.md) · [.cursorrules](.cursorrules)
+
+---
+
+## 빠른 시작 (Quick Start)
+
+### 사전 조건
+
+| 항목 | 요구 |
+|------|------|
+| C++ | **17** 이상 |
+| 빌드 | **CMake** 3.16+ |
+| 컴파일러 | g++ 또는 clang++ (C++17) |
+| 테스트 | **Catch2** (CMake FetchContent 또는 시스템 설치) |
+| 포맷 (선택) | clang-format |
+
+### 빌드 & 실행
+
+> 레이어 분리·Catch2 도입 후 아래가 정식 진입점이다. `UnitConverter.cpp` 스타터는 학습 초기 참고용이다.
+
 ```bash
-g++ -o UnitConverter UnitConverter.cpp
-./UnitConverter
+cmake -B build -S .
+cmake --build build
+./build/unit_converter
 ```
 
-### 기본 요구사항
-1. 사용자 입력 예시:
-   ```
-   meter:2.5
-   ```
-   → 출력:
-   ```
-   2.5 meter = 8.2 feet
-   2.5 meter = 2.7 yard
-   ...
-   ```
+한 줄 입력 예:
 
-2. 현재 지원 단위:
-   - meter
-   - feet
-   - yard
+```text
+meter:5.0
+```
 
-3. 새로운 단위가 추가될 때도 기존 코드의 변경이 최소화되도록 할 것.
+### 예시 입출력 (table, 기본)
 
-4. 각 단위 간 변환이 정확히 계산되도록 테스트 코드를 작성할 것.
+**입력**
 
-### 비즈니스 로직
-- `1 meter = 3.28084 feet`
-- `1 meter = 1.09361 yard`
-- feet/yard 간의 비율은 meter 기반으로 계산.
+```text
+meter:5.0
+```
 
-### 품질 요구사항
-- OCP를 만족하는 설계
-- SRP를 만족하는 클래스 구성
-- 입력 값 검증 (음수, 잘못된 형식, 없는 단위)
+**출력 (stdout, exit 0)**
 
-### 추가 요구사항
-- **설정 외부화**
-   - 변환 비율을 외부 설정 파일(JSON/YAML)에서 로드
-- **동적으로 단위와 비율을 등록할 수 있도록 한다**
-   - 사용자 입력으로 `1 cubit = 0.4572 meter`를 등록하고 사용 가능
-- **출력 포맷 선택 기능** 
-   - JSON / CSV / 표 형태 출력
+```text
+5.0 meter = 16.4 feet
+5.0 meter = 5.5 yard
+```
 
+- 좌변은 **입력 값·단위 그대로** 보존한다.
+- 우변 target만 **소수 1자리** 반올림한다.
+- **입력 단위(meter)는 결과 줄에 포함하지 않는다** (D-UC01).
 
-## 생성형AI를 활용한 Activities (6 시간)
+---
 
-1. 문제 코드 및 기본 요구사항 분석 (0.5시간)
-   - 기본 코드구조, 로직 이해
-2. 기본 요구사항 및 품질 요구사항 구현 (2시간)
-   - OCP를 만족하는 인터페이스 구현 
-   - SRP를 만족하도록 클래스 구현 
-   - 입력값 검증을 위한 구현
-3. TC 구현 (0.5시간)
-   - 단위변환 기능 검증 및 입력 값 검증 TC 작성 
-4. 추가 요구사항 구현 (2시간)
-   - 3개 요구사항 구현 및 TC 작성 
-5. 회고 및 발표 (1시간)
-   - 실습 목표와 달성도
-   - AI를 어떻게 활용했나? 도움이 된 순간과 한계는?
-   - TC를 추가해보면서 개선에 미친 영향, TC 작성 팁
-   - 클린코드와 리팩토링에서 느낀 장점과 어려운점
+## 지원 단위 및 비율
+
+모든 환산은 **meter equivalence** 경유: `value_B = (value_A × R_A) / R_B`  
+Domain 비교 허용 오차: **ε = 1e-9** (절대). 표시는 Boundary에서 target만 1자리.
+
+| 단위명 | 식별자 | meter 기준 비율 (meters per 1 unit) | 출처 |
+|--------|--------|-------------------------------------|------|
+| meter | `meter` | 1.0 | PRD §5.1 · Gherkin Background |
+| feet | `feet` | 0.3048 | PRD §5.1 (≈ 1 m = 3.28084 ft) |
+| yard | `yard` | 0.9144 | PRD §5.1 (≈ 1 m = 1.09361 yd) |
+
+---
+
+## 입력 형식 계약
+
+### 정상 입력 (3예시)
+
+| 입력 | 설명 |
+|------|------|
+| `meter:2.5` | convert — 등록된 다른 단위로 환산 |
+| `feet:1` | convert — LHS `1 feet =` 보존 |
+| `register:cubit=0.4572` | 동적 등록 — 1 cubit = 0.4572 meter |
+
+**규칙**
+
+- `unit_id`: `[a-z][a-z0-9_]{0,31}`, 앞뒤 trim
+- `value`: 유한 십진수, **> 0** (0·음수·non-finite 거부)
+
+### 비정상 입력 (3예시 + 패턴)
+
+| 입력 | exit | stderr 패턴 (human) |
+|------|------|---------------------|
+| `meter2.5` | 2 | `Invalid format. Use unit:value (ex: meter:2.5)` |
+| `meter:abc` | 2 | `Invalid number: abc` |
+| `furlong:1` | 3 | `Unknown unit: furlong` |
+
+**추가 (exit 2, stdout 변환 줄 없음)**
+
+| 입력 | stderr |
+|------|--------|
+| `meter:-1.5` | `Value must be positive: -1.5` |
+| `yard:1.2.3` | invalid number (malformed decimal) |
+| `register:cubit` | `Invalid register format. Use register:unit=meters_per_unit (ex: register:cubit=0.4572)` |
+
+### exit code
+
+| code | 의미 |
+|------|------|
+| 0 | 성공 |
+| 2 | 형식·숫자·비양수·register·format 옵션 오류 |
+| 3 | 미등록 단위 |
+
+---
+
+## 아키텍처
+
+### BCE 레이어
+
+```mermaid
+flowchart TB
+  subgraph Boundary
+    CLI[CLI / Parser / Formatter]
+  end
+  subgraph Control
+    UC[ConvertUseCase / RegisterUseCase / LoadConfigUseCase]
+  end
+  subgraph Entity
+    SVC[ConversionService / UnitRegistry]
+  end
+  subgraph Data
+    SRC[JsonUnitRatioSource]
+  end
+
+  CLI --> UC
+  UC --> SVC
+  UC --> SRC
+```
+
+### 의존성 방향
+
+| 허용 | 금지 |
+|------|------|
+| Boundary → Control | Entity → Boundary / Data / Control |
+| Control → Entity, Data | Data → Boundary |
+| | Boundary → Entity (직접; 테스트 Facade 제외) |
+
+| 레이어 | 책임 |
+|--------|------|
+| **Boundary** | 파싱, table/csv/json, stderr·exit, 표시 1자리 |
+| **Control** | UseCase, DomainError → exit/메시지 매핑 |
+| **Entity** | Registry, meter 환산, 불변식 |
+| **Data** | `config/units.json` 로드 |
+
+### 새 단위 추가 (코드 변경 최소화)
+
+1. `config/units.json`의 `units`에 `"<id>": <meters_per_one_unit>` 추가 (양수).
+2. 또는 런타임: `register:<unit_id>=<meters_per_unit>`.
+3. Catch2로 convert 결과에 새 단위가 **target에만** 나타나는지 확인.
+4. **금지:** `main`/Parser에 `if (unit == "…")` 분기 추가.
+
+---
+
+## 테스트 실행
+
+| 항목 | 값 |
+|------|-----|
+| 프레임워크 | **Catch2** (고정) |
+| 레이아웃 | `tests/domain`, `tests/boundary`, `tests/data`, `tests/integration` |
+| 패턴 | AAA (Arrange–Act–Assert) |
+
+### 명령
+
+```bash
+cmake -B build -S .
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+```bash
+./build/unit_converter_tests
+```
+
+### 커버리지 목표 (PRD §4.3)
+
+| 레이어 | Line | Branch |
+|--------|------|--------|
+| entity (Domain) | ≥ 95% | ≥ 90% |
+| control | ≥ 90% | ≥ 85% |
+| boundary | ≥ 85% | ≥ 80% |
+| data | ≥ 90% | ≥ 85% |
+
+**회귀 최소 세트 (5건 상시 green):** Domain P0, IT `meter:2.5` table, IT 음수·형식·unknown unit 실패.
+
+**TDD 순서:** Domain RED → Data → Boundary → Integration (`.cursorrules`).
+
+---
+
+## 설정 파일 (JSON/YAML)
+
+### 위치
+
+| 파일 | 우선순위 |
+|------|----------|
+| `config/units.json` | 1차 (권장) |
+| YAML | 선택 (JSON과 동일 스키마 시) |
+
+### JSON 예시 (v1)
+
+```json
+{
+  "version": 1,
+  "base_unit": "meter",
+  "units": {
+    "meter": 1.0,
+    "feet": 0.3048,
+    "yard": 0.9144
+  }
+}
+```
+
+| 규칙 | 내용 |
+|------|------|
+| `meter` | 필수 |
+| `units` 값 | > 0 |
+| 로드 실패 | exit ≠ 0, stdout 변환 줄 0 |
+
+### 동적 단위 등록 (PRD §5.3)
+
+```text
+register:cubit=0.4572
+```
+
+| 결과 | 동작 |
+|------|------|
+| 성공 | 이후 convert target에 `cubit` 포함 |
+| duplicate | 기존 id 재등록 거부, Registry 불변 |
+| factor ≤ 0 | 등록 거부 |
+
+---
+
+## 출력 포맷
+
+기본: **table**. 선택: `--format=table|csv|json`.
+
+### 콘솔 (table)
+
+```text
+2.5 meter = 8.2 feet
+2.5 meter = 2.7 yard
+```
+
+줄 패턴: `{source_value} {source_unit} = {target_value} {target_unit}`
+
+### JSON
+
+```json
+{
+  "source": { "unit": "meter", "value": 2.5 },
+  "conversions": [
+    { "unit": "feet", "value": 8.2 },
+    { "unit": "yard", "value": 2.7 }
+  ]
+}
+```
+
+실패 (`--format=json`): **stdout empty**, stderr 예:
+
+```json
+{ "error": "UNKNOWN_UNIT", "unit": "furlong" }
+```
+
+### CSV
+
+```csv
+source_unit,source_value,target_unit,target_value
+meter,2.5,feet,8.2
+meter,2.5,yard,2.7
+```
+
+| 잘못된 format | 결과 |
+|---------------|------|
+| `--format=xml` | exit 2, `Unknown output format: xml. Use table, csv, json` |
+
+---
+
+## 기여 가이드 (Contributing)
+
+### 계약 변경 금지 원칙
+
+- golden·ε·stderr·exit·table 줄 패턴 변경 시 Domain + Boundary + IT **동시** 갱신.
+- 표시 1자리 변경은 Boundary 테스트만; Domain ε golden **유지**.
+- DomainError ↔ exit ↔ stderr ↔ JSON error **단일 매핑 테이블** 유지 (RR-2).
+
+### 테스트 없는 PR 거부
+
+- 동작·계약 변경은 **Catch2 필수**.
+- assertion 삭제·완화·ε 임의 확대 **거부**.
+- `regression_minimum` 5건 green 없이 merge **금지**.
+
+### 커밋 메시지
+
+```text
+<type>(<scope>): <subject>
+```
+
+| type | 용도 |
+|------|------|
+| `test` | Catch2 RED/GREEN |
+| `feat` | 계약 충족 (scope: entity, boundary, control, data) |
+| `refactor` | 테스트 green 후 구조만 |
+| `docs` | README·PRD |
+| `fix` | 계약 버그 (IT ID 명시) |
+
+---
+
+## 라이선스
+
+MIT License — **학습용** 오픈소스 실습 프로젝트.
+
+---
+
+*Phase 6 README · Phase 5 PRD 동기화. 구현·인수 상태는 [docs/TODO.md](docs/TODO.md) 참고.*
