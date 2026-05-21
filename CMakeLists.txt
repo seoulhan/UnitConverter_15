@@ -47,6 +47,13 @@ add_library(boundary_lib
 target_include_directories(boundary_lib PUBLIC "${CMAKE_SOURCE_DIR}")
 target_link_libraries(boundary_lib PUBLIC entity_lib control_lib)
 
+add_library(decaying_unit src/DecayingUnit.cpp)
+target_include_directories(decaying_unit PUBLIC
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(decaying_unit PUBLIC entity_lib)
+
 add_executable(unit_converter UnitConverter.cpp)
 target_link_libraries(unit_converter PRIVATE boundary_lib control_lib entity_lib data_lib)
 
@@ -73,10 +80,15 @@ target_link_libraries(UnitConverter_test PRIVATE
 )
 add_dependencies(UnitConverter_test unit_converter)
 
+add_executable(decaying_unit_test tests/test_decaying_unit.cpp)
+target_link_libraries(decaying_unit_test PRIVATE decaying_unit Catch2::Catch2WithMain)
+
 include(CTest)
 include(Catch)
 
 catch_discover_tests(UnitConverter_test)
+
+add_test(NAME bonus_decaying_unit COMMAND decaying_unit_test "[bonus]")
 
 add_test(
     NAME GoldenMaster
