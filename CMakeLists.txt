@@ -15,19 +15,30 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(unit_converter UnitConverter.cpp)
 
-add_executable(unit_converter_tests
+set(GOLDEN_MASTER_WORK_DIR "${CMAKE_BINARY_DIR}/golden_master_work")
+file(MAKE_DIRECTORY "${GOLDEN_MASTER_WORK_DIR}")
+
+add_executable(UnitConverter_test
     tests/integration/test_golden_master.cpp
 )
-target_include_directories(unit_converter_tests PRIVATE "${CMAKE_SOURCE_DIR}/tests")
-target_compile_definitions(unit_converter_tests PRIVATE
+target_include_directories(UnitConverter_test PRIVATE "${CMAKE_SOURCE_DIR}/tests")
+target_compile_definitions(UnitConverter_test PRIVATE
     UC_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     UC_EXE_PATH="$<TARGET_FILE:unit_converter>"
+    UC_TEST_WORK_DIR="${GOLDEN_MASTER_WORK_DIR}"
 )
-target_link_libraries(unit_converter_tests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(UnitConverter_test PRIVATE Catch2::Catch2WithMain)
+add_dependencies(UnitConverter_test unit_converter)
 
 include(CTest)
-include(Catch)
-catch_discover_tests(unit_converter_tests)
+add_test(
+    NAME GoldenMaster
+    COMMAND UnitConverter_test "[golden_master]"
+)
+set_tests_properties(GoldenMaster PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    LABELS "golden_master;regression"
+)
 
 add_custom_target(golden_master_generate
     COMMAND "${CMAKE_SOURCE_DIR}/scripts/generate_golden_master.sh"

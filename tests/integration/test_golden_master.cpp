@@ -1,9 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
-#include <vector>
 
-#include "helpers/golden_master.hpp"
+#include "helpers/approval_tests.hpp"
 
 #ifndef UC_SOURCE_DIR
 #define UC_SOURCE_DIR "."
@@ -13,54 +12,68 @@
 #define UC_EXE_PATH "unit_converter"
 #endif
 
-namespace {
+#ifndef UC_TEST_WORK_DIR
+#define UC_TEST_WORK_DIR "."
+#endif
 
-std::filesystem::path sourceRoot() {
-    return std::filesystem::path(UC_SOURCE_DIR);
-}
+// Catch2 TEST_CASE_METHOD maps to Google Test TEST_F(GoldenMasterTest, ...) pattern.
+class GoldenMasterTest {
+public:
+    GoldenMasterTest()
+        : sourceRoot_(UC_SOURCE_DIR),
+          workDir_(UC_TEST_WORK_DIR),
+          exePath_(UC_EXE_PATH),
+          baselinePath_(sourceRoot_ / "tests" / "golden_master_expected.txt"),
+          inputPath_(workDir_ / "input.txt"),
+          actualPath_(workDir_ / "actual.txt") {}
 
-std::filesystem::path converterExecutable() {
-    return std::filesystem::path(UC_EXE_PATH);
-}
+protected:
+    void runCase(const char* caseId,
+                 const char* inputLine,
+                 const char* sectionTag) {
+        INFO("Case ID: " << caseId);
+        REQUIRE(std::filesystem::exists(exePath_));
 
-std::filesystem::path expectedPath() {
-    return sourceRoot() / "tests" / "golden_master_expected.txt";
-}
+        REQUIRE(uc::approval::captureStdoutToFile(
+            exePath_, inputLine, inputPath_, actualPath_));
 
-const std::vector<std::string>& scenarios() {
-    static const std::vector<std::string> kScenarios = {
-        "meter:2.5",
-        "feet:1.0",
-        "yard:1.0",
-        "meter:0.0",
-    };
-    return kScenarios;
-}
+        const std::string expectedStr =
+            uc::approval::extractSection(baselinePath_, sectionTag);
 
-}  // namespace
-
-TEST_CASE("Golden master approval regression", "[integration][golden_master][regression]") {
-    const auto exe = converterExecutable();
-    INFO("Executable: " << exe.string());
-    REQUIRE(std::filesystem::exists(exe));
-
-    const auto actual = uc::golden_master::buildActualDocument(exe, scenarios());
-    REQUIRE_FALSE(actual.empty());
-
-    const auto expectedFile = expectedPath();
-    if (!std::filesystem::exists(expectedFile)) {
-        REQUIRE(uc::golden_master::writeFile(expectedFile, actual));
-        WARN("Created baseline at tests/golden_master_expected.txt — run: git add tests/golden_master_expected.txt");
-        return;
+        const std::string actualStr = uc::approval::stripPromptLines(
+            uc::approval::readFile(actualPath_));
+        EXPECT_EQ(expectedStr, actualStr);
     }
 
-    const auto expected = uc::golden_master::trimTrailingNewlines(
-        uc::golden_master::readFile(expectedFile));
-    const auto normalizedActual = uc::golden_master::trimTrailingNewlines(actual);
+private:
+    std::filesystem::path sourceRoot_;
+    std::filesystem::path workDir_;
+    std::filesystem::path exePath_;
+    std::filesystem::path baselinePath_;
+    std::filesystem::path inputPath_;
+    std::filesystem::path actualPath_;
+};
 
-    if (normalizedActual != expected) {
-        const auto diff = uc::golden_master::diffLines(expected, normalizedActual);
-        UNSCOPED_INFO("Golden master diff:\n" << diff);
-        FAIL("Golden master mismatch — update baseline only after intentional output change");
-    }
+TEST_CASE_METHOD(GoldenMasterTest,
+                 "GM-TC-01 UnitConverter_meter_2_5",
+                 "[golden_master][GM-TC-01]") {
+    runCase("GM-TC-01", "meter:2.5", "meter:2.5");
+}
+
+TEST_CASE_METHOD(GoldenMasterTest,
+                 "GM-TC-02 UnitConverter_feet_1_0",
+                 "[golden_master][GM-TC-02]") {
+    runCase("GM-TC-02", "feet:1.0", "feet:1.0");
+}
+
+TEST_CASE_METHOD(GoldenMasterTest,
+                 "GM-TC-03 UnitConverter_yard_1_0",
+                 "[golden_master][GM-TC-03]") {
+    runCase("GM-TC-03", "yard:1.0", "yard:1.0");
+}
+
+TEST_CASE_METHOD(GoldenMasterTest,
+                 "GM-TC-04 UnitConverter_meter_0_0",
+                 "[golden_master][GM-TC-04]") {
+    runCase("GM-TC-04", "meter:0.0", "meter:0.0");
 }
