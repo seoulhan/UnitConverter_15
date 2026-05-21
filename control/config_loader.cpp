@@ -1,15 +1,17 @@
-#include "config_loader.hpp"
+#include "control/config_loader.hpp"
 
-namespace control {
+namespace uc::control {
 
-entity::UnitRegistry loadConfigOrDefault(const std::string& path,
-                                         const data::IUnitRatioSource& source) {
-    try {
-        const data::UnitConfigSnapshot snapshot = source.load(path);
-        return entity::UnitRegistry::fromUnits(snapshot.units);
-    } catch (...) {
-        return entity::UnitRegistry::defaultRegistry();
+ConfigLoader::ConfigLoader(const uc::data::IUnitRatioSource& source)
+    : source_(source) {}
+
+uc::entity::UnitRegistry ConfigLoader::loadOrDefaults(const std::string& path) const {
+    const auto snapshot = source_.load(path);
+    if (!snapshot) {
+        return uc::entity::UnitRegistry::withDefaults();
     }
+
+    return uc::entity::UnitRegistry::fromUnits(snapshot->units);
 }
 
-}  // namespace control
+}  // namespace uc::control

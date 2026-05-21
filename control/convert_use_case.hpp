@@ -1,21 +1,31 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "entity/conversion_service.hpp"
 
-namespace control {
+namespace uc::control {
+
+struct ConvertResult {
+    std::string sourceValueToken;
+    std::string sourceUnit;
+    std::vector<uc::entity::ConversionLine> lines;
+};
 
 class ConvertUseCase {
 public:
-    explicit ConvertUseCase(entity::ConversionService service);
+    explicit ConvertUseCase(uc::entity::UnitRegistry registry);
 
-    [[nodiscard]] std::vector<entity::ConversionResult> execute(const std::string& fromUnit,
-                                                                double value) const;
+    std::optional<ConvertResult> convert(const std::string& sourceUnit,
+                                           const std::string& sourceValueToken,
+                                           double sourceValue);
+
+    const uc::entity::UnitRegistry& registry() const { return service_.registry(); }
 
 private:
-    entity::ConversionService service_;
+    uc::entity::ConversionService service_;
 };
 
-}  // namespace control
+}  // namespace uc::control

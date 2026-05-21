@@ -1,29 +1,29 @@
-#include "unit_registry.hpp"
+#include "entity/unit_registry.hpp"
 
-#include <stdexcept>
+namespace uc::entity {
 
-#include "unit_constants.hpp"
+namespace {
 
-namespace entity {
+constexpr double kMetersPerMeter = 1.0;
+constexpr double kMetersPerFoot = 0.3048;
+constexpr double kMetersPerYard = 0.9144;
 
-UnitRegistry::UnitRegistry(std::map<std::string, double> units) : units_(std::move(units)) {}
+}  // namespace
 
-UnitRegistry UnitRegistry::defaultRegistry() {
-    return UnitRegistry({{"meter", kMetersPerMeter},
-                         {"feet", kMetersPerFoot},
-                         {"yard", kMetersPerYard}});
+UnitRegistry::UnitRegistry() = default;
+
+UnitRegistry UnitRegistry::withDefaults() {
+    return fromUnits({
+        {"feet", kMetersPerFoot},
+        {"meter", kMetersPerMeter},
+        {"yard", kMetersPerYard},
+    });
 }
 
-UnitRegistry UnitRegistry::fromUnits(const std::map<std::string, double>& units) {
-    if (units.find("meter") == units.end()) {
-        throw std::invalid_argument("meter unit is required");
-    }
-    for (const auto& [id, factor] : units) {
-        if (factor <= 0.0) {
-            throw std::invalid_argument("unit factor must be positive: " + id);
-        }
-    }
-    return UnitRegistry(units);
+UnitRegistry UnitRegistry::fromUnits(std::map<std::string, double> units) {
+    UnitRegistry registry;
+    registry.units_ = std::move(units);
+    return registry;
 }
 
 std::optional<double> UnitRegistry::metersPerUnit(const std::string& unitId) const {
@@ -34,21 +34,28 @@ std::optional<double> UnitRegistry::metersPerUnit(const std::string& unitId) con
     return it->second;
 }
 
-UnitRegistry UnitRegistry::withUnit(const std::string& unitId, double metersPerOneUnit) const {
-    if (metersPerOneUnit <= 0.0) {
-        throw std::invalid_argument("meters per unit must be positive");
+bool UnitRegistry::registerUnit(const std::string& unitId,
+                                double metersPerUnit,
+                                DomainError& error) {
+    if (metersPerUnit <= 0.0) {
+        error = DomainError::InvalidFactor;
+        return false;
     }
-    auto copy = units_;
-    if (copy.count(unitId) != 0) {
-        throw std::invalid_argument("duplicate unit: " + unitId);
+    if (units_.count(unitId) != 0) {
+        error = DomainError::DuplicateUnit;
+        return false;
     }
-    copy[unitId] = metersPerOneUnit;
-    return UnitRegistry(std::move(copy));
+    units_.emplace(unitId, metersPerUnit);
+    return true;
 }
 
-UnitRegistry registerUnit(const UnitRegistry& registry, const std::string& unitId,
-                          double metersPerOneUnit) {
-    return registry.withUnit(unitId, metersPerOneUnit);
+std::vector<std::string> UnitRegistry::unitIdsSorted() const {
+    std::vector<std::string> ids;
+    ids.reserve(units_.size());
+    for (const auto& entry : units_) {
+        ids.push_back(entry.first);
+    }
+    return ids;
 }
 
-}  // namespace entity
+}  // namespace uc::entity

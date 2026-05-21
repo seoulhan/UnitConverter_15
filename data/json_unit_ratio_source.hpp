@@ -1,14 +1,15 @@
 #pragma once
 
-#include "i_unit_ratio_source.hpp"
+#include <optional>
+#include <string>
 
-namespace data {
+#include "data/i_unit_ratio_source.hpp"
+
+namespace uc::data {
 
 class JsonUnitRatioSource : public IUnitRatioSource {
 public:
-    [[nodiscard]] UnitConfigSnapshot load(const std::string& path) const override;
+    std::optional<UnitRatioSnapshot> load(const std::string& path) const override;
 };
 
-[[nodiscard]] UnitConfigSnapshot loadYamlUnitConfig(const std::string& path);
-
-}  // namespace data
+}  // namespace uc::data

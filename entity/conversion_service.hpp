@@ -1,31 +1,30 @@
 #pragma once
 
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "unit_registry.hpp"
+#include "entity/unit_registry.hpp"
 
-namespace entity {
+namespace uc::entity {
 
-struct ConversionResult {
+struct ConversionLine {
     std::string targetUnit;
-    double value;
+    double targetValue = 0.0;
 };
 
 class ConversionService {
 public:
     explicit ConversionService(UnitRegistry registry);
 
-    [[nodiscard]] double convert(const std::string& fromUnit, double value,
-                                 const std::string& toUnit) const;
+    const UnitRegistry& registry() const { return registry_; }
 
-    [[nodiscard]] std::vector<ConversionResult> convertAll(const std::string& fromUnit,
-                                                           double value) const;
-
-    [[nodiscard]] const UnitRegistry& registry() const { return registry_; }
+    std::optional<std::vector<ConversionLine>> convertAll(const std::string& sourceUnit,
+                                                          double sourceValue) const;
 
 private:
     UnitRegistry registry_;
 };
 
-}  // namespace entity
+}  // namespace uc::entity

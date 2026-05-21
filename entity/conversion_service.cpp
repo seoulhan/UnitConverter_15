@@ -1,39 +1,35 @@
-#include "conversion_service.hpp"
+#include "entity/conversion_service.hpp"
 
-#include <cmath>
-#include <stdexcept>
+#include <algorithm>
 
-namespace entity {
+namespace uc::entity {
 
-ConversionService::ConversionService(UnitRegistry registry) : registry_(std::move(registry)) {}
+ConversionService::ConversionService(UnitRegistry registry)
+    : registry_(std::move(registry)) {}
 
-double ConversionService::convert(const std::string& fromUnit, double value,
-                                  const std::string& toUnit) const {
-    if (!(value > 0.0) || !std::isfinite(value)) {
-        throw std::invalid_argument("value must be positive and finite");
+std::optional<std::vector<ConversionLine>> ConversionService::convertAll(
+    const std::string& sourceUnit,
+    double sourceValue) const {
+    const auto sourceMetersPer = registry_.metersPerUnit(sourceUnit);
+    if (!sourceMetersPer) {
+        return std::nullopt;
     }
 
-    const auto fromFactor = registry_.metersPerUnit(fromUnit);
-    const auto toFactor = registry_.metersPerUnit(toUnit);
-    if (!fromFactor || !toFactor) {
-        throw std::invalid_argument("unknown unit");
-    }
-
-    // value_B = (value_A * R_A) / R_B  (R = meters per 1 unit)
-    return (value * (*fromFactor)) / (*toFactor);
-}
-
-std::vector<ConversionResult> ConversionService::convertAll(const std::string& fromUnit,
-                                                              double value) const {
-    std::vector<ConversionResult> results;
-    for (const auto& [unitId, factor] : registry_.units()) {
-        (void)factor;
-        if (unitId == fromUnit) {
+    std::vector<ConversionLine> lines;
+    auto targetIds = registry_.unitIdsSorted();
+    for (const auto& targetUnit : targetIds) {
+        if (targetUnit == sourceUnit) {
             continue;
         }
-        results.push_back({unitId, convert(fromUnit, value, unitId)});
+        const auto targetMetersPer = registry_.metersPerUnit(targetUnit);
+        if (!targetMetersPer) {
+            continue;
+        }
+        const double targetValue =
+            (sourceValue * (*sourceMetersPer)) / (*targetMetersPer);
+        lines.push_back({targetUnit, targetValue});
     }
-    return results;
+    return lines;
 }
 
-}  // namespace entity
+}  // namespace uc::entity

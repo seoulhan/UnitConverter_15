@@ -1,116 +1,80 @@
-#include "cli_parser.hpp"
+#include "boundary/cli_parser.hpp"
 
-#include <cctype>
 #include <cmath>
-#include <sstream>
-#include <stdexcept>
+
+namespace uc::boundary {
+
+CliException::CliException(CliErrorKind kind, const std::string& message)
+    : std::runtime_error(message), kind_(kind) {}
 
 namespace {
 
-std::string trim(const std::string& text) {
-    std::size_t start = 0;
-    while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start]))) {
-        ++start;
+void trimInPlace(std::string& text) {
+    while (!text.empty() && text.front() == ' ') {
+        text.erase(text.begin());
     }
-    std::size_t end = text.size();
-    while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
-        --end;
+    while (!text.empty() && text.back() == ' ') {
+        text.pop_back();
     }
-    return text.substr(start, end - start);
 }
 
-bool isValidUnitId(const std::string& unitId) {
-    if (unitId.empty() || unitId.size() > 32) {
-        return false;
-    }
-    if (!std::islower(static_cast<unsigned char>(unitId.front()))) {
-        return false;
-    }
-    for (std::size_t i = 1; i < unitId.size(); ++i) {
-        const char c = unitId[i];
-        if (!std::islower(static_cast<unsigned char>(c)) && !std::isdigit(static_cast<unsigned char>(c)) &&
-            c != '_') {
-            return false;
+double parsePositiveNumber(const std::string& token) {
+    try {
+        const double value = std::stod(token);
+        if (!std::isfinite(value) || value <= 0.0) {
+            throw CliException(
+                CliErrorKind::NonPositiveValue,
+                "Value must be positive: " + token);
         }
+        return value;
+    } catch (const CliException&) {
+        throw;
+    } catch (...) {
+        throw CliException(CliErrorKind::InvalidNumber,
+                           "Invalid number: " + token);
     }
-    return true;
-}
-
-double parsePositiveNumber(const std::string& raw) {
-    if (raw.empty()) {
-        throw std::invalid_argument("empty number");
-    }
-    std::size_t dotCount = 0;
-    for (char c : raw) {
-        if (c == '.') {
-            ++dotCount;
-            if (dotCount > 1) {
-                throw std::invalid_argument("malformed decimal");
-            }
-            continue;
-        }
-        if (c == '-' || c == '+') {
-            throw std::invalid_argument("signed number not allowed here");
-        }
-        if (!std::isdigit(static_cast<unsigned char>(c))) {
-            throw std::invalid_argument("invalid number token");
-        }
-    }
-
-    std::istringstream stream(raw);
-    double value = 0.0;
-    stream >> value;
-    if (!stream || !stream.eof()) {
-        throw std::invalid_argument("invalid number");
-    }
-    if (!(value > 0.0) || !std::isfinite(value)) {
-        throw std::invalid_argument("value must be positive");
-    }
-    return value;
 }
 
 }  // namespace
 
-namespace boundary {
+ParsedCommand CliParser::parse(const std::string& line) {
+    if (line.rfind("register:", 0) == 0) {
+        const std::string payload = line.substr(std::string("register:").size());
+        const auto eq = payload.find('=');
+        if (eq == std::string::npos) {
+            throw CliException(
+                CliErrorKind::InvalidRegisterFormat,
+                "Invalid register format. Use register:unit=meters_per_unit "
+                "(ex: register:cubit=0.4572)");
+        }
+        RegisterCommand cmd;
+        cmd.unit = payload.substr(0, eq);
+        trimInPlace(cmd.unit);
+        const std::string factorToken = payload.substr(eq + 1);
+        cmd.metersPerUnit = parsePositiveNumber(factorToken);
+        ParsedCommand parsed;
+        parsed.isRegister = true;
+        parsed.registerCmd = cmd;
+        return parsed;
+    }
 
-ParsedInput parseConvertInput(const std::string& line) {
-    const std::string trimmed = trim(line);
-    const std::size_t colon = trimmed.find(':');
+    const auto colon = line.find(':');
     if (colon == std::string::npos) {
-        throw std::invalid_argument("missing colon in unit:value format");
+        throw CliException(
+            CliErrorKind::InvalidFormat,
+            "Invalid format. Use unit:value (ex: meter:2.5)");
     }
 
-    ParsedInput parsed;
-    parsed.unitId = trim(trimmed.substr(0, colon));
-    const std::string valueText = trim(trimmed.substr(colon + 1));
+    ConvertCommand cmd;
+    cmd.unit = line.substr(0, colon);
+    trimInPlace(cmd.unit);
+    cmd.valueToken = line.substr(colon + 1);
+    trimInPlace(cmd.valueToken);
+    cmd.value = parsePositiveNumber(cmd.valueToken);
 
-    if (!isValidUnitId(parsed.unitId)) {
-        throw std::invalid_argument("invalid unit id");
-    }
-
-    parsed.value = parsePositiveNumber(valueText);
+    ParsedCommand parsed;
+    parsed.convert = cmd;
     return parsed;
 }
 
-ParsedRegister parseRegisterInput(const std::string& line) {
-    const std::string trimmed = trim(line);
-    if (trimmed.rfind("register:", 0) != 0) {
-        throw std::invalid_argument("register prefix required");
-    }
-    const std::string body = trim(trimmed.substr(std::string("register:").size()));
-    const std::size_t eq = body.find('=');
-    if (eq == std::string::npos) {
-        throw std::invalid_argument("register format unit=factor required");
-    }
-
-    ParsedRegister parsed;
-    parsed.unitId = trim(body.substr(0, eq));
-    const std::string factorText = trim(body.substr(eq + 1));
-    if (!isValidUnitId(parsed.unitId)) {
-        throw std::invalid_argument("invalid unit id");
-    }
-    parsed.metersPerUnit = parsePositiveNumber(factorText);
-    return parsed;
-}
-
-}  // namespace boundary
+}  // namespace uc::boundary

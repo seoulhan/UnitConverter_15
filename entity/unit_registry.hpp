@@ -3,31 +3,30 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
-#include "domain_error.hpp"
+#include "entity/domain_error.hpp"
 
-namespace entity {
+namespace uc::entity {
 
 class UnitRegistry {
 public:
-    static UnitRegistry defaultRegistry();
+    UnitRegistry();
 
-    static UnitRegistry fromUnits(const std::map<std::string, double>& units);
+    static UnitRegistry withDefaults();
 
-    [[nodiscard]] std::optional<double> metersPerUnit(const std::string& unitId) const;
+    static UnitRegistry fromUnits(std::map<std::string, double> units);
 
-    [[nodiscard]] UnitRegistry withUnit(const std::string& unitId, double metersPerOneUnit) const;
+    const std::map<std::string, double>& units() const { return units_; }
 
-    [[nodiscard]] const std::map<std::string, double>& units() const { return units_; }
+    std::optional<double> metersPerUnit(const std::string& unitId) const;
+
+    bool registerUnit(const std::string& unitId, double metersPerUnit, DomainError& error);
+
+    std::vector<std::string> unitIdsSorted() const;
 
 private:
-    explicit UnitRegistry(std::map<std::string, double> units);
-
     std::map<std::string, double> units_;
 };
 
-[[nodiscard]] UnitRegistry registerUnit(const UnitRegistry& registry,
-                                        const std::string& unitId,
-                                        double metersPerOneUnit);
-
-}  // namespace entity
+}  // namespace uc::entity

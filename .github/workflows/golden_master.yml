@@ -1,0 +1,19 @@
+name: Golden Master
+
+on:
+  push:
+    branches: [main, refactoring, A_01]
+  pull_request:
+    branches: [main]
+
+jobs:
+  regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure

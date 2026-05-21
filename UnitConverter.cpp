@@ -1,52 +1,63 @@
 #include <iostream>
-#include <sstream>
 #include <string>
 
-int main() {
-    std::cout << "Insert value for converting (ex: meter:2.5): ";
+#include "boundary/cli_parser.hpp"
+#include "boundary/error_mapper.hpp"
+#include "boundary/output_formatter.hpp"
+#include "control/config_loader.hpp"
+#include "control/convert_use_case.hpp"
+#include "control/register_use_case.hpp"
+#include "data/json_unit_ratio_source.hpp"
 
+namespace {
+
+uc::entity::UnitRegistry gRegistry = uc::entity::UnitRegistry::withDefaults();
+
+void printError(const uc::boundary::MappedCliError& mapped) {
+    std::cerr << mapped.message << std::endl;
+}
+
+}  // namespace
+
+int main() {
     std::string input;
     std::getline(std::cin, input);
 
-    std::string unit;
-    double value = 0.0;
-
-    std::size_t pos = input.find(':');
-    if (pos == std::string::npos) {
-        std::cerr << "Invalid format. Use unit:value (ex: meter:2.5)" << std::endl;
-        return 1;
-    }
-
-    unit = input.substr(0, pos);
-    std::string valueStr = input.substr(pos + 1);
-
     try {
-        value = std::stod(valueStr);
-    } catch (...) {
-        std::cerr << "Invalid number: " << valueStr << std::endl;
-        return 1;
+        const auto command = uc::boundary::CliParser::parse(input);
+        if (command.isRegister) {
+            uc::control::RegisterUseCase registerUseCase(gRegistry);
+            uc::entity::DomainError domainError = uc::entity::DomainError::UnknownUnit;
+            if (!registerUseCase.registerUnit(command.registerCmd.unit,
+                                              command.registerCmd.metersPerUnit,
+                                              domainError)) {
+                const auto mapped = uc::boundary::ErrorMapper::fromDomain(domainError);
+                printError(mapped);
+                return mapped.exitCode;
+            }
+            gRegistry = registerUseCase.takeRegistry();
+            return 0;
+        }
+
+        uc::control::ConvertUseCase convertUseCase(gRegistry);
+        const auto result = convertUseCase.convert(command.convert.unit,
+                                                     command.convert.valueToken,
+                                                     command.convert.value);
+        if (!result) {
+            const auto mapped =
+                uc::boundary::ErrorMapper::unknownUnit(command.convert.unit);
+            printError(mapped);
+            return mapped.exitCode;
+        }
+
+        const auto lines = uc::boundary::OutputFormatter::formatTable(
+            result->sourceValueToken, result->sourceUnit, result->lines);
+        for (const auto& line : lines) {
+            std::cout << line << std::endl;
+        }
+        return 0;
+    } catch (const uc::boundary::CliException& error) {
+        printError(uc::boundary::ErrorMapper::fromCli(error));
+        return uc::boundary::ErrorMapper::fromCli(error).exitCode;
     }
-
-    double meterValue = 0.0;
-
-    if (unit == "meter") {
-        meterValue = value;
-    } else if (unit == "feet") {
-        meterValue = value / 3.28084;
-    } else if (unit == "yard") {
-        meterValue = value / 1.09361;
-    } else {
-        std::cerr << "Unknown unit: " << unit << std::endl;
-        return 1;
-    }
-
-    double inMeters = meterValue;
-    double inFeet = meterValue * 3.28084;
-    double inYards = meterValue * 1.09361;
-
-    std::cout << value << " " << unit << " = " << inMeters << " meter" << std::endl;
-    std::cout << value << " " << unit << " = " << inFeet << " feet" << std::endl;
-    std::cout << value << " " << unit << " = " << inYards << " yard" << std::endl;
-
-    return 0;
 }

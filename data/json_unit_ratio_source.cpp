@@ -1,60 +1,73 @@
-#include "json_unit_ratio_source.hpp"
+#include "data/json_unit_ratio_source.hpp"
 
+#include <algorithm>
 #include <fstream>
-#include <regex>
 #include <sstream>
-#include <stdexcept>
+
+namespace uc::data {
 
 namespace {
 
-std::string readFile(const std::string& path) {
-    std::ifstream file(path);
-    if (!file) {
-        throw std::runtime_error("config file not found: " + path);
+bool extractNumber(const std::string& text, double& out) {
+    try {
+        out = std::stod(text);
+        return true;
+    } catch (...) {
+        return false;
     }
-    std::ostringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-}
-
-data::UnitConfigSnapshot parseUnitsObject(const std::string& content) {
-    data::UnitConfigSnapshot snapshot;
-    snapshot.version = 1;
-    snapshot.baseUnit = "meter";
-
-    const std::regex pairRegex(R"rx("([a-z][a-z0-9_]*)"\s*:\s*([0-9]+(?:\.[0-9]+)?))rx");
-    const auto begin = std::sregex_iterator(content.begin(), content.end(), pairRegex);
-    const auto end = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
-        const std::string unitId = (*it)[1].str();
-        const double factor = std::stod((*it)[2].str());
-        if (factor <= 0.0) {
-            throw std::runtime_error("unit factor must be positive");
-        }
-        snapshot.units[unitId] = factor;
-    }
-
-    if (snapshot.units.find("meter") == snapshot.units.end()) {
-        throw std::runtime_error("meter unit is required");
-    }
-    if (snapshot.units.empty()) {
-        throw std::runtime_error("units section is empty");
-    }
-    return snapshot;
 }
 
 }  // namespace
 
-namespace data {
+std::optional<UnitRatioSnapshot> JsonUnitRatioSource::load(
+    const std::string& path) const {
+    std::ifstream in(path);
+    if (!in) {
+        return std::nullopt;
+    }
 
-UnitConfigSnapshot JsonUnitRatioSource::load(const std::string& path) const {
-    const std::string content = readFile(path);
-    return parseUnitsObject(content);
+    UnitRatioSnapshot snapshot;
+    std::string line;
+    bool inUnits = false;
+    while (std::getline(in, line)) {
+        if (line.find("\"units\"") != std::string::npos) {
+            inUnits = true;
+            continue;
+        }
+        if (!inUnits) {
+            continue;
+        }
+        const auto colon = line.find(':');
+        if (colon == std::string::npos) {
+            continue;
+        }
+        auto key = line.substr(0, colon);
+        const auto q1 = key.find('"');
+        const auto q2 = key.rfind('"');
+        if (q1 == std::string::npos || q2 == std::string::npos || q2 <= q1) {
+            continue;
+        }
+        key = key.substr(q1 + 1, q2 - q1 - 1);
+
+        auto valueText = line.substr(colon + 1);
+        valueText.erase(
+            std::remove(valueText.begin(), valueText.end(), ','),
+            valueText.end());
+        valueText.erase(
+            std::remove(valueText.begin(), valueText.end(), ' '),
+            valueText.end());
+
+        double metersPer = 0.0;
+        if (!extractNumber(valueText, metersPer)) {
+            continue;
+        }
+        snapshot.units.emplace(key, metersPer);
+    }
+
+    if (snapshot.units.find("meter") == snapshot.units.end()) {
+        return std::nullopt;
+    }
+    return snapshot;
 }
 
-UnitConfigSnapshot loadYamlUnitConfig(const std::string& path) {
-    const std::string content = readFile(path);
-    return parseUnitsObject(content);
-}
-
-}  // namespace data
+}  // namespace uc::data

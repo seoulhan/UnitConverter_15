@@ -1,12 +1,18 @@
-#include "convert_use_case.hpp"
+#include "control/convert_use_case.hpp"
 
-namespace control {
+namespace uc::control {
 
-ConvertUseCase::ConvertUseCase(entity::ConversionService service) : service_(std::move(service)) {}
+ConvertUseCase::ConvertUseCase(uc::entity::UnitRegistry registry)
+    : service_(std::move(registry)) {}
 
-std::vector<entity::ConversionResult> ConvertUseCase::execute(const std::string& fromUnit,
-                                                               double value) const {
-    return service_.convertAll(fromUnit, value);
+std::optional<ConvertResult> ConvertUseCase::convert(const std::string& sourceUnit,
+                                                     const std::string& sourceValueToken,
+                                                     double sourceValue) {
+    const auto lines = service_.convertAll(sourceUnit, sourceValue);
+    if (!lines) {
+        return std::nullopt;
+    }
+    return ConvertResult{sourceValueToken, sourceUnit, *lines};
 }
 
-}  // namespace control
+}  // namespace uc::control

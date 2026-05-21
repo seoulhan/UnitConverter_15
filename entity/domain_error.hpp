@@ -1,12 +1,11 @@
 #pragma once
 
-namespace entity {
+namespace uc::entity {
 
 enum class DomainError {
-    kNonPositiveValue,
-    kUnknownUnit,
-    kDuplicateUnit,
-    kInvalidFactor,
+    UnknownUnit,
+    DuplicateUnit,
+    InvalidFactor,
 };
 
-}  // namespace entity
+}  // namespace uc::entity

@@ -1,54 +1,33 @@
-#include "output_formatter.hpp"
+#include "boundary/output_formatter.hpp"
 
-#include <cmath>
 #include <iomanip>
 #include <sstream>
 
-namespace boundary {
+namespace uc::boundary {
 
 namespace {
 
-double roundOneDecimal(double value) {
-    return std::round(value * 10.0) / 10.0;
-}
-
-std::string formatNumber(double value) {
-    std::ostringstream stream;
-    stream << std::fixed;
-    if (std::fabs(value - std::round(value)) < 1e-9) {
-        stream << std::setprecision(1) << value;
-    } else {
-        stream << std::setprecision(6) << value;
-        std::string text = stream.str();
-        while (!text.empty() && text.back() == '0') {
-            text.pop_back();
-        }
-        if (!text.empty() && text.back() == '.') {
-            text.pop_back();
-        }
-        return text;
-    }
-    return stream.str();
+std::string formatTargetValue(double value) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(6) << value;
+    return out.str();
 }
 
 }  // namespace
 
-std::string formatTableLine(double sourceValue, const std::string& sourceUnit, double targetValue,
-                            const std::string& targetUnit) {
-    std::ostringstream stream;
-    stream << formatNumber(sourceValue) << ' ' << sourceUnit << " = "
-           << formatNumber(roundOneDecimal(targetValue)) << ' ' << targetUnit;
-    return stream.str();
-}
-
-std::vector<std::string> formatTable(const std::string& sourceUnit, double sourceValue,
-                                     const std::vector<entity::ConversionResult>& rows) {
-    std::vector<std::string> lines;
-    lines.reserve(rows.size());
-    for (const auto& row : rows) {
-        lines.push_back(formatTableLine(sourceValue, sourceUnit, row.value, row.targetUnit));
+std::vector<std::string> OutputFormatter::formatTable(
+    const std::string& sourceValueToken,
+    const std::string& sourceUnit,
+    const std::vector<uc::entity::ConversionLine>& lines) {
+    std::vector<std::string> formatted;
+    formatted.reserve(lines.size());
+    for (const auto& line : lines) {
+        std::ostringstream row;
+        row << sourceValueToken << ' ' << sourceUnit << " = "
+            << formatTargetValue(line.targetValue) << ' ' << line.targetUnit;
+        formatted.push_back(row.str());
     }
-    return lines;
+    return formatted;
 }
 
-}  // namespace boundary
+}  // namespace uc::boundary

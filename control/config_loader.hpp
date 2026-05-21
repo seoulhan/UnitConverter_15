@@ -5,9 +5,16 @@
 #include "data/i_unit_ratio_source.hpp"
 #include "entity/unit_registry.hpp"
 
-namespace control {
+namespace uc::control {
 
-[[nodiscard]] entity::UnitRegistry loadConfigOrDefault(const std::string& path,
-                                                       const data::IUnitRatioSource& source);
+class ConfigLoader {
+public:
+    explicit ConfigLoader(const uc::data::IUnitRatioSource& source);
 
-}  // namespace control
+    uc::entity::UnitRegistry loadOrDefaults(const std::string& path) const;
+
+private:
+    const uc::data::IUnitRatioSource& source_;
+};
+
+}  // namespace uc::control

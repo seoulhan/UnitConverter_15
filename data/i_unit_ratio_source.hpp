@@ -1,20 +1,19 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 
-namespace data {
+namespace uc::data {
 
-struct UnitConfigSnapshot {
-    int version = 1;
-    std::string baseUnit = "meter";
+struct UnitRatioSnapshot {
     std::map<std::string, double> units;
 };
 
 class IUnitRatioSource {
 public:
     virtual ~IUnitRatioSource() = default;
-    [[nodiscard]] virtual UnitConfigSnapshot load(const std::string& path) const = 0;
+    virtual std::optional<UnitRatioSnapshot> load(const std::string& path) const = 0;
 };
 
-}  // namespace data
+}  // namespace uc::data

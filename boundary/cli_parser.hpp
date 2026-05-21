@@ -1,20 +1,50 @@
 #pragma once
 
+#include <stdexcept>
 #include <string>
 
-namespace boundary {
+namespace uc::boundary {
 
-struct ParsedInput {
-    std::string unitId;
-    double value;
+enum class CliErrorKind {
+    InvalidFormat,
+    InvalidNumber,
+    NonPositiveValue,
+    UnknownUnit,
+    InvalidRegisterFormat,
+    DuplicateUnit,
+    InvalidFactor,
 };
 
-struct ParsedRegister {
-    std::string unitId;
-    double metersPerUnit;
+class CliException : public std::runtime_error {
+public:
+    CliException(CliErrorKind kind, const std::string& message);
+
+    CliErrorKind kind() const { return kind_; }
+
+private:
+    CliErrorKind kind_;
 };
 
-[[nodiscard]] ParsedInput parseConvertInput(const std::string& line);
-[[nodiscard]] ParsedRegister parseRegisterInput(const std::string& line);
+struct ConvertCommand {
+    std::string unit;
+    std::string valueToken;
+    double value = 0.0;
+};
 
-}  // namespace boundary
+struct RegisterCommand {
+    std::string unit;
+    double metersPerUnit = 0.0;
+};
+
+struct ParsedCommand {
+    bool isRegister = false;
+    ConvertCommand convert{};
+    RegisterCommand registerCmd{};
+};
+
+class CliParser {
+public:
+    static ParsedCommand parse(const std::string& line);
+};
+
+}  // namespace uc::boundary

@@ -5,13 +5,14 @@
 
 #include "entity/conversion_service.hpp"
 
-namespace boundary {
+namespace uc::boundary {
 
-[[nodiscard]] std::string formatTableLine(double sourceValue, const std::string& sourceUnit,
-                                         double targetValue, const std::string& targetUnit);
+class OutputFormatter {
+public:
+    static std::vector<std::string> formatTable(
+        const std::string& sourceValueToken,
+        const std::string& sourceUnit,
+        const std::vector<uc::entity::ConversionLine>& lines);
+};
 
-[[nodiscard]] std::vector<std::string> formatTable(const std::string& sourceUnit,
-                                                   double sourceValue,
-                                                   const std::vector<entity::ConversionResult>& rows);
-
-}  // namespace boundary
+}  // namespace uc::boundary
